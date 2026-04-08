@@ -1,19 +1,17 @@
-FROM ubuntu:18.04
-USER root
-# setup datetime container
-RUN apt-get update && apt-get install -y tzdata
-ENV TZ Asia/Ho_Chi_Minh
-RUN date
-
-RUN apt-get update && apt-get install curl -y
-# install nodejs
-RUN curl --silent --location https://deb.nodesource.com/setup_12.x | bash -
-RUN apt-get install -y \
-  nodejs
+FROM node:18-bullseye-slim
 
 WORKDIR /app
-COPY package*.json /app/
+
+# Keep container timezone aligned with app expectation.
+ENV TZ=Asia/Ho_Chi_Minh
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
 COPY . .
-RUN npm install
 RUN chmod +x ./start.sh
-CMD ./start.sh
+
+EXPOSE 2004
+CMD ["sh", "./start.sh"]
