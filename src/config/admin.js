@@ -1,43 +1,56 @@
-// Khởi tạo dữ liệu
+// Initialize admin account from env variables.
 require("dotenv").config();
-const assert = require('assert');
-const {
-    ADMIN_USERNAME,
-    ADMIN_PASSWORD
-} = process.env;
+const assert = require("assert");
+const { ADMIN_USERNAME, ADMIN_PASSWORD } = process.env;
 
 assert(ADMIN_USERNAME, "ADMIN_USERNAME configuration is required.");
 assert(ADMIN_PASSWORD, "ADMIN_PASSWORD configuration is required.");
 
+const Admin = require("../app/Models/Admin");
+const generateHash = require("../app/Helpers/Helpers").generateHash;
+const AdminPerConfig = require("../data/adminPermission");
+const AdminPermission = require("../app/Models/AdminPermission");
 
-// Admin
-let Admin = require('../app/Models/Admin');
-let generateHash = require('../app/Helpers/Helpers').generateHash;
-let AdminPerConfig = require('../data/adminPermission');
-let AdminPermission = require('../app/Models/AdminPermission');
+const ensureAdminPermissions = async (username) => {
+    for (const [key, value] of Object.entries(AdminPerConfig)) {
+        const permission = await AdminPermission.findOne({
+            username,
+            permission: value,
+        })
+            .select("_id")
+            .lean();
 
-Admin.estimatedDocumentCount().exec(function(err, total) {
-    if (total == 0) {
-        Admin.create({ 'username': `${process.env.ADMIN_USERNAME}`, 'password': generateHash(`${process.env.ADMIN_PASSWORD}`), 'rights': 9, 'regDate': new Date() }, (err, user) => {
-            if (err) {
-                console.log(`Can't create Admin: ` + err);
-                return;
-            }
-            // create permission for admin
-            for (let [key, value] of Object.entries(AdminPerConfig)) {
-                AdminPermission.findOne({ username: process.env.ADMIN_USERNAME, permission: value }).select("_id").lean().then(permission => {
-                    if (!permission) {
-                        AdminPermission.create({
-                            'username': `${process.env.ADMIN_USERNAME}`,
-                            'permission': value,
-                            'status': true
-                        });
-                        console.log(`[${process.env.ADMIN_USERNAME}] => Created permission: ${key}`);
-                    } else {
-                        console.log(`Permission Exists`);
-                    }
-                });
-            }
-        });
+        if (!permission) {
+            await AdminPermission.create({
+                username,
+                permission: value,
+                status: true,
+            });
+            console.log(`[${username}] => Created permission: ${key}`);
+        }
     }
-});
+};
+
+(async () => {
+    try {
+        let admin = await Admin.findOne({ username: ADMIN_USERNAME });
+
+        if (!admin) {
+            admin = await Admin.create({
+                username: ADMIN_USERNAME,
+                password: generateHash(ADMIN_PASSWORD),
+                rights: 9,
+                regDate: new Date(),
+            });
+            console.log(`[${ADMIN_USERNAME}] => Created admin account from env`);
+        } else if (!admin.validPassword(ADMIN_PASSWORD)) {
+            admin.password = generateHash(ADMIN_PASSWORD);
+            await admin.save();
+            console.log(`[${ADMIN_USERNAME}] => Synced admin password from env`);
+        }
+
+        await ensureAdminPermissions(ADMIN_USERNAME);
+    } catch (err) {
+        console.log(`Admin init error: ${err && err.message ? err.message : err}`);
+    }
+})();
