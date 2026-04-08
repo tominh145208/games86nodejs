@@ -31,4 +31,3 @@ isolate-*.log
 
 # large/non-runtime artifacts
 public/download/*.apk
-cms-develop/
